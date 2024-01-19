@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <libgen.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,14 +7,48 @@
 #include <linux/limits.h>
 #include <bits/local_lim.h>
 
+/*
+  Color configuration
+*/
+
+/*
+  color config struct
+    username and cwd color
+    user@host:/home/user$
+*/
 struct ColorConfig {
   int username_color;
   int cwd_color;
 };
 
+/*
+  @brief reads config file
+  @params filename: string containing filename of config
+  @returns color config struct
+*/
 struct ColorConfig read_config(const char *filename) {
   struct ColorConfig config = {32, 35};
-  FILE *file = fopen(filename, "r");
+
+  char exePath[PATH_MAX];
+  char dirPath[PATH_MAX];
+  char configPath[PATH_MAX];
+
+  // Get the executable's path
+  ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+  if (len != -1) {
+    exePath[len] = '\0'; // Null-terminate the result of readlink
+
+    // Extract the directory
+    strcpy(dirPath, dirname(exePath));
+
+    // Construct the full path to the config file
+    snprintf(configPath, sizeof(configPath), "%s/%s", dirPath, filename);
+  } else {
+    perror("Error finding executable path");
+    return config;
+  }
+
+  FILE *file = fopen(configPath, "r");
   char line[128];
 
   if (!file) {
@@ -36,6 +71,7 @@ struct ColorConfig read_config(const char *filename) {
   fclose(file);
   return config;
 }
+
 
 /*
     @brief helper function that returns a string containing cwd
