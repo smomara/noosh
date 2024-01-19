@@ -4,6 +4,59 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <linux/limits.h>
+#include <bits/local_lim.h>
+
+struct ColorConfig {
+  int username_color;
+  int cwd_color;
+};
+
+struct ColorConfig read_config(const char *filename) {
+  struct ColorConfig config = {32, 35};
+  FILE *file = fopen(filename, "r");
+  char line[128];
+
+  if (!file) {
+    perror("Error opening config file");
+    return config;
+  }
+
+  while (fgets(line, sizeof(line), file)) {
+    char *token = strtok(line, "=");
+    if (token) {
+      int value = atoi(strtok(NULL, "="));
+      if (strcmp(token, "username_color") == 0) {
+        config.username_color = value;
+      } else if (strcmp(token, "cwd_color") == 0) {
+        config.cwd_color = value;
+      }
+    }
+  }
+
+  fclose(file);
+  return config;
+}
+
+/*
+    @brief helper function that returns a string containing cwd
+    @params args: list of args, not used
+    @returns string containing cwd
+*/
+char* get_cwd(char ** args) {
+  char *buf = malloc(sizeof(char) * PATH_MAX);
+  if (!buf) {
+    perror("noosh: allocation error\n");
+    exit(EXIT_FAILURE);
+  }
+
+  if (getcwd(buf, PATH_MAX) != NULL) {
+    return buf;
+  } else {
+    perror("noosh");
+    free(buf);
+    exit(EXIT_FAILURE);
+  }
+}
 
 /*
     function declarations for builtin shell commands:
@@ -65,23 +118,7 @@ int noosh_cd(char ** args) {
     @return always returns 1 to continue executing
 */
 int noosh_pwd(char ** args) {
-  char * buf;
-  buf = (char * ) malloc(sizeof(char) * PATH_MAX);
-
-  if (!buf) {
-    perror("noosh: allocation error\n");
-    exit(EXIT_FAILURE);
-  }
-
-  if (getcwd(buf, PATH_MAX) != NULL) {
-    printf("%s\n", buf);
-  } else {
-    perror("noosh");
-    free(buf);
-    exit(EXIT_FAILURE);
-  }
-
-  free(buf);
+  printf("%s\n", get_cwd(NULL));
   return 1;
 }
 
@@ -248,12 +285,26 @@ char ** noosh_split_line(char * line) {
     @brief loop parsing and executing input
 */
 void noosh_loop(void) {
+  struct ColorConfig config = read_config("noosh_config.txt");
+
   char * line;
   char ** args;
   int status;
+  char hostname[HOST_NAME_MAX];
+  char *username;
+  char *cwd;
+
+  gethostname(hostname, HOST_NAME_MAX);
+  username = getenv("USER");
 
   do {
-    printf("> ");
+    cwd = get_cwd(NULL);
+
+    printf("\033[0;%dm%s@\033[0;%dm%s\033[0m:\033[0;%dm%s\033[0m$ ",
+               config.username_color, username,
+               config.username_color, hostname,
+               config.cwd_color, cwd);
+
     line = noosh_read_line();
     args = noosh_split_line(line);
     status = noosh_execute(args);
